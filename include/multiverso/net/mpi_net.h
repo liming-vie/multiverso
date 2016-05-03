@@ -16,11 +16,7 @@
 
 #include <mpi.h>
 
-#if defined(__CYGWIN__)
-  /* TODO: Windows */
-#elif defined(__APPLE__)
-  /* TODO: Mac OS X */
-#elif defined(__linux__)
+#ifndef _WIN32
 #include <dlfcn.h>
 #endif
 
@@ -34,27 +30,29 @@ namespace multiverso {
 #define MV_MPI_CALL(mpi_return) CHECK((mpi_return) == MPI_SUCCESS)
 
 namespace {
-  static MPI_Datatype GetDataType(char*)   { return MPI_CHAR; }
-  static MPI_Datatype GetDataType(int*)    { return MPI_INT; }
-  static MPI_Datatype GetDataType(float*)  { return MPI_FLOAT; }
-  static MPI_Datatype GetDataType(double*) { return MPI_DOUBLE; }
+static MPI_Datatype GetDataType(char*)   { return MPI_CHAR; }
+static MPI_Datatype GetDataType(int*)    { return MPI_INT; }
+static MPI_Datatype GetDataType(float*)  { return MPI_FLOAT; }
+static MPI_Datatype GetDataType(double*) { return MPI_DOUBLE; }
 
-  static void dlopen_libmpi()
-  {
-    void *handle = 0;
-    int mode = RTLD_NOW | RTLD_GLOBAL;
-  #if defined(__CYGWIN__)
-    /* TODO: Windows */
-  #elif defined(__APPLE__)
-    /* TODO: Mac OS X */
-  #elif defined(__linux__)
-    /* GNU/Linux and others */
-    #ifdef RTLD_NOLOAD
-    mode |= RTLD_NOLOAD;
-    #endif
-    if (!handle) handle = dlopen("libmpi_cxx.so",   mode);
+static void dlopen_libmpi()
+{
+#ifndef _WIN32
+  void *handle = 0;
+  int mode = RTLD_NOW | RTLD_GLOBAL;
+#if defined(__CYGWIN__)
+  /* TODO: Windows */
+#elif defined(__APPLE__)
+  /* TODO: Mac OS X */
+#else
+  /* GNU/Linux and others */
+  #ifdef RTLD_NOLOAD
+  mode |= RTLD_NOLOAD;
   #endif
-  }
+  if (!handle) handle = dlopen("libmpi_cxx.so",   mode);
+#endif
+#endif
+}
 }
 
 class MPINetWrapper : public NetInterface {
