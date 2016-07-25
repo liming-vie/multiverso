@@ -14,6 +14,7 @@ class Synchronizer;
 class Server : public Actor {
 public:
   Server();
+  virtual ~Server() = default;
   static Server* GetServer();
   int RegisterTable(ServerTable* table);
 protected:
