@@ -68,7 +68,6 @@ void Server::ProcessAdd(MessagePtr& msg) {
 // If worker k has add delta to server j times when its i-th Get 
 // then the server will return the parameter after all K 
 // workers finished their j-th update
-
 class SyncServer : public Server {
 public:
   SyncServer() : Server() {
@@ -297,10 +296,8 @@ Server* Server::GetServer() {
     Log::Info("Create a async concurrent server\n");
     return new ConcurrentServer();
   }
-  // if (MV_CONFIG_backup_worker_ratio > 0.0) {
   Log::Info("Create a sync server\n");
   return new SyncServer();
-  // }
 }
 
 
