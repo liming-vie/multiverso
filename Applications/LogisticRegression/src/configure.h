@@ -42,6 +42,8 @@ public:
   //      initial - (update count - learning rate coef * minibatch size))
   // one mini-batch update once
   double learning_rate_coef = 1e6;
+  // should be slightly larger than n
+  unsigned long long inner_m = 10000;
 
   // FTRL parameters
   double alpha = 0.005;

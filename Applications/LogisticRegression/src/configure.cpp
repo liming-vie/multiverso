@@ -46,6 +46,7 @@ Configure::Configure(const std::string& config_file) {
       line.substr(pos + 1, line.length() - pos - 1);
   }
   
+  CONFIG_PARSE_ULL(inner_m);
   CONFIG_PARSE_ULL(input_size);
   CONFIG_PARSE_INT(output_size);
 

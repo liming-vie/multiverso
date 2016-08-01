@@ -40,6 +40,16 @@ public:
   virtual void Store(const std::string& model_file);
   virtual void SetKeys(multiverso::MtQueue<SparseBlock<bool>*> *keys) {}
   virtual void DisplayTime();
+  // copmpute update delta
+  virtual float GetGradient(Sample<EleType>* sample,
+    DataBlock<EleType>* delta, DataBlock<EleType>* model = nullptr);
+  DataBlock<EleType>* CreateDelta(Configure& config);
+  // copy pointer
+  void SetBatchGradient(DataBlock<EleType>* delta);
+  // copy value
+  void SaveTableToTableWK(Configure &config);
+  void AverageGradient(DataBlock<EleType>* delta, size_t batch_size);
+
   DataBlock<EleType>* table() const { return table_; }
   // factory method to get a new instance
   // \param config should contain model needed configs
@@ -48,8 +58,6 @@ public:
   static Model<EleType>* Get(Configure& config);
 
 protected:
-  // copmpute update delta
-  virtual float GetGradient(Sample<EleType>* sample, DataBlock<EleType>* delta);
   // update table
   virtual void UpdateTable(DataBlock<EleType>* delta);
 
@@ -60,12 +68,16 @@ protected:
   Updater<EleType>* updater_;
   // local cache
   DataBlock<EleType>* table_;
+  // TODO only support local LR
+  DataBlock<EleType>* table_wk_;
 
   int num_row_;
 
   int minibatch_size_;
 
   DataBlock<EleType>* delta_;
+  DataBlock<EleType>* delta_wk_;
+  DataBlock<EleType>* batch_gradient_;
 
   Timer timer_;
   double computation_time_;

@@ -23,12 +23,18 @@ Model<EleType>::Model(Configure& config) :
     ftrl_ = true;
     table_ = (DataBlock<EleType>*)DataBlock<FTRLEntry<EleType>>
       ::GetBlock(true, size);
+    table_wk_ = (DataBlock<EleType>*)DataBlock<FTRLEntry<EleType>>
+      ::GetBlock(true, size);
     delta_ = (DataBlock<EleType>*)DataBlock<FTRLGradient<EleType>>
+      ::GetBlock(true, size);
+    delta_wk_ = (DataBlock<EleType>*)DataBlock<FTRLGradient<EleType>>
       ::GetBlock(true, size);
   } else {
     ftrl_ = false;
     table_ = DataBlock<EleType>::GetBlock(config.sparse, size);
+    table_wk_ = DataBlock<EleType>::GetBlock(config.sparse, size);
     delta_ = DataBlock<EleType>::GetBlock(config.sparse, size);
+    delta_wk_ = DataBlock<EleType>::GetBlock(config.sparse, size);
   }
 
   table_->Clear();  // will set value to zero when dense
@@ -55,9 +61,70 @@ Model<EleType>::~Model() {
 }
 
 template<typename EleType>
-inline float Model<EleType>::GetGradient(Sample<EleType>* sample, 
-  DataBlock<EleType>* delta) {
-  return objective_->Gradient(sample, table_, delta);
+DataBlock<EleType>* Model<EleType>::CreateDelta(Configure& config) {
+  size_t size = (size_t)config.input_size * num_row_;
+  if (config.objective_type == "ftrl") {
+    return (DataBlock<EleType>*)DataBlock<FTRLGradient<EleType>>
+      ::GetBlock(true, size);
+  }
+  else {
+    DataBlock<EleType>::GetBlock(config.sparse, size);
+  }
+}
+
+template<typename EleType>
+inline float Model<EleType>::GetGradient(Sample<EleType>* sample,
+  DataBlock<EleType>* delta, DataBlock<EleType>* model) {
+  return objective_->Gradient(sample, model == nullptr ? table_ : model, delta);
+}
+
+template<typename EleType>
+void Model<EleType>::AverageGradient(DataBlock<EleType>* delta, size_t batch_size) {
+  if (batch_size > 1) {
+    if (delta->sparse()) {
+      if (ftrl_) {
+        SparseBlockIter<FTRLGradient<EleType>> iter
+          ((DataBlock<FTRLGradient<EleType>>*)delta);
+        while (iter.Next()) {
+          iter.Value()->delta_z = (EleType)(iter.Value()->delta_z
+            / static_cast<double>(batch_size));
+          iter.Value()->delta_n = (EleType)(iter.Value()->delta_n
+            / static_cast<double>(batch_size));
+        }
+      }
+      else {
+        SparseBlockIter<EleType> iter(delta);
+        while (iter.Next()) {
+          (*iter.Value()) = (EleType)(*iter.Value()
+            / static_cast<double>(batch_size));
+        }
+      }
+    }
+    else {
+      EleType* raw = static_cast<EleType*>(delta->raw());
+      for (size_t i = 0; i < delta->size(); ++i) {
+        raw[i] = (EleType)(raw[i] / static_cast<double>(batch_size));
+      }
+    }
+  }
+}
+
+// TODO only support local LR
+template<typename EleType>
+void Model<EleType>::SaveTableToTableWK(Configure &config) {
+  if (config.objective_type == "ftrl") {
+  }
+  else if (config.sparse) {
+  }
+  else {
+    memcpy(table_wk_->raw(), table_->raw(), table_->size() * sizeof(EleType));
+  }
+}
+
+
+template<typename EleType>
+void Model<EleType>::SetBatchGradient(DataBlock<EleType>* delta) {
+  batch_gradient_ = delta;
 }
 
 template<typename EleType>
@@ -68,40 +135,23 @@ float Model<EleType>::Update(int count, Sample<EleType>** samples) {
     ++compute_count_;
     timer_.Start();
     // compute delta
-    delta_->Clear();
+    delta_->Clear(); // delta_wj
+    delta_wk_->Clear();
     int upper = i + minibatch_size_;
     upper = upper > count ? count : upper;
     for (int j = i; j < upper; ++j) {
       train_loss += GetGradient(samples[j], delta_);
+      GetGradient(samples[j], delta_wk_, table_wk_);
     }
     
-    // calculate and average delta
-    int batch_size = upper - i;
-    if (batch_size > 1) {
-      if (delta_->sparse()) {
-        if (ftrl_) {
-          SparseBlockIter<FTRLGradient<EleType>> iter
-            ((DataBlock<FTRLGradient<EleType>>*)delta_);
-          while (iter.Next()) {
-            iter.Value()->delta_z = (EleType)(iter.Value()->delta_z 
-              / static_cast<double>(batch_size));
-            iter.Value()->delta_n = (EleType)(iter.Value()->delta_n 
-              / static_cast<double>(batch_size));
-          }
-        } else {
-          SparseBlockIter<EleType> iter(delta_);
-          while (iter.Next()) {
-            (*iter.Value()) = (EleType)(*iter.Value() 
-              / static_cast<double>(batch_size)); 
-          }
-        }
-      } else {
-        EleType* raw = static_cast<EleType*>(delta_->raw());
-        for (size_t i = 0; i < delta_->size(); ++i) {
-          raw[i] = (EleType)(raw[i] / static_cast<double>(batch_size));
-        }
-      }
+    // TODO: only support local desne LR
+    EleType* raw = reinterpret_cast<EleType*>(delta_->raw());
+    EleType* raw_wk = reinterpret_cast<EleType*>(delta_wk_->raw());
+    EleType* raw_batch = reinterpret_cast<EleType*>(batch_gradient_->raw());
+    for (size_t idx = 0; idx < delta_->size(); ++idx) {
+      raw[idx] -= raw_wk[idx] - raw_batch[idx];
     }
+    AverageGradient(delta_, upper - i);
 
     computation_time_ += timer_.ElapseMilliSeconds();
     // update delta

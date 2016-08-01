@@ -39,7 +39,46 @@ LogReg<EleType>::~LogReg() {
 }
 
 template<typename EleType>
+void LogReg<EleType>::BatchGradient(const std::string& train_file, size_t epoch,
+  DataBlock<EleType>* delta) {
+  int buffer_size = config_->read_buffer_size;
+
+  auto reader = SampleReader<EleType>::Get(
+    config_->reader_type,
+    train_file, config_->input_size,
+    config_->output_size,
+    config_->minibatch_size * config_->sync_frequency,
+    buffer_size, config_->sparse);
+
+  Sample<EleType>** samples = new Sample<EleType>*[buffer_size];
+
+  reader->Reset();
+  // wait for reading
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  model_->SetKeys(reader->keys());
+  size_t total_sample = 0;
+  int count;
+  do {
+    while ((count = reader->Read(buffer_size, samples))) {
+      for (int i = 0; i < count; ++i) {
+        model_->GetGradient(samples[i], delta);
+      }
+      reader->Free(count);
+      total_sample += count;
+    }
+  } while (!reader->EndOfFile());
+
+  Log::Write(Info, "Finish batch gradient computation for m %lld\n", epoch);
+  delete[]samples;
+
+  model_->AverageGradient(delta, total_sample);
+}
+
+template<typename EleType>
 void LogReg<EleType>::Train(const std::string& train_file) {
+  Test();
+
   Log::Write(Info, "Train with file %s\n", train_file.c_str());
 
   int buffer_size = config_->read_buffer_size;
@@ -52,28 +91,43 @@ void LogReg<EleType>::Train(const std::string& train_file) {
     buffer_size, config_->sparse);
 
   Sample<EleType>** samples = new Sample<EleType>*[buffer_size];
+  auto batch_gradient = model_->CreateDelta(*config_);
 
   int count = 0;
   int train_epoch = config_->train_epoch;
   size_t sample_seen = 0;
   float train_loss = 0.0f;
-  size_t last = 0;
+  size_t last_seen = 0;
+  size_t last_m = 0;
+  size_t m = 0;
+
+  BatchGradient(train_file, m++, batch_gradient);
+  model_->SetBatchGradient(batch_gradient);
+  model_->SaveTableToTableWK(*config_);
+
   for (int ep = 0; ep < train_epoch; ++ep) {
     reader->Reset();
-    // wait for reading
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     Log::Write(Info, "Start train epoch %d\n", ep);
     model_->SetKeys(reader->keys());
     do {
       while ((count = reader->Read(buffer_size, samples))) {
         Log::Write(Debug, "model training %d samples, sample seen %d\n", 
           count, sample_seen);
+        if (sample_seen - last_m >= config_->inner_m) {
+          BatchGradient(train_file, m++, batch_gradient);
+          model_->SetBatchGradient(batch_gradient);
+          model_->SaveTableToTableWK(*config_);
+          last_m = sample_seen;
+        }
+
         train_loss += model_->Update(count, samples);
+
         sample_seen += count;
-        if (sample_seen - last >= config_->show_time_per_sample) {
-          Log::Write(Info, "Sample seen %lld, train loss %f\n", sample_seen, train_loss / (sample_seen - last));
+        if (sample_seen - last_seen >= config_->show_time_per_sample) {
+          Log::Write(Info, "Sample seen %lld, train loss %f\n", sample_seen, train_loss / (sample_seen - last_seen));
+          Test();
           train_loss = 0.0f;
-          last = sample_seen;
+          last_seen = sample_seen;
           model_->DisplayTime();
         }
         reader->Free(count);
@@ -84,6 +138,7 @@ void LogReg<EleType>::Train(const std::string& train_file) {
   delete reader;
 
   delete[]samples;
+  delete batch_gradient;
   Log::Write(Info, "Finish train, total sample %lld\n", sample_seen);
 }
 
