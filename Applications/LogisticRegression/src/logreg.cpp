@@ -39,8 +39,40 @@ LogReg<EleType>::~LogReg() {
 }
 
 template<typename EleType>
+void LogReg<EleType>::InitTrain(const std::string& train_file) {
+  int buffer_size = config_->read_buffer_size;
+
+  auto reader = SampleReader<EleType>::Get(
+    config_->reader_type,
+    train_file, config_->input_size,
+    config_->output_size,
+    config_->minibatch_size * config_->sync_frequency,
+    buffer_size, config_->sparse);
+  reader->Reset();
+
+  Sample<EleType>** samples = new Sample<EleType>*[buffer_size];
+  int count = 0;
+  model_->SetKeys(reader->keys());
+  do {
+    while ((count = reader->Read(buffer_size, samples))) {
+      for (int i = 0; i < count; ++i) {
+        model_->InitGradient(samples[i]);
+      }
+      reader->Free(count);
+    }
+  } while (!reader->EndOfFile());
+  delete reader;
+
+  delete[]samples;
+
+  model_->AverageLastGradient();
+}
+
+template<typename EleType>
 void LogReg<EleType>::Train(const std::string& train_file) {
   Log::Write(Info, "Train with file %s\n", train_file.c_str());
+
+  InitTrain(train_file);
 
   int buffer_size = config_->read_buffer_size;
 
@@ -58,17 +90,21 @@ void LogReg<EleType>::Train(const std::string& train_file) {
   size_t sample_seen = 0;
   float train_loss = 0.0f;
   size_t last = 0;
+  size_t idx = 0;
   for (int ep = 0; ep < train_epoch; ++ep) {
     reader->Reset();
     // wait for reading
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     Log::Write(Info, "Start train epoch %d\n", ep);
     model_->SetKeys(reader->keys());
+    idx = 0;
     do {
       while ((count = reader->Read(buffer_size, samples))) {
         Log::Write(Debug, "model training %d samples, sample seen %d\n", 
           count, sample_seen);
-        train_loss += model_->Update(count, samples);
+        train_loss += model_->Update(count, samples, idx);
+        
+        idx += count;
         sample_seen += count;
         if (sample_seen - last >= config_->show_time_per_sample) {
           Log::Write(Info, "Sample seen %lld, train loss %f\n", sample_seen, train_loss / (sample_seen - last));

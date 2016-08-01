@@ -36,6 +36,9 @@ public:
   DataBlock<EleType>* model() const;
 
 private:
+  void InitTrain(const std::string& train_file);
+
+private:
   Model<EleType> *model_;
   Configure* config_;
 };

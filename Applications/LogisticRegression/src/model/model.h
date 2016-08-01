@@ -30,7 +30,7 @@ public:
   virtual ~Model();
   // update model with #count samples
   // \return sum of train loss of every sample
-  virtual float Update(int count, Sample<EleType>**samples);
+  virtual float Update(int count, Sample<EleType>**samples, size_t idx);
   // \param input one input
   // \return correct number
   virtual int Predict(int count, Sample<EleType>**samples, EleType**predicts);
@@ -40,6 +40,7 @@ public:
   virtual void Store(const std::string& model_file);
   virtual void SetKeys(multiverso::MtQueue<SparseBlock<bool>*> *keys) {}
   virtual void DisplayTime();
+  void InitGradient(Sample<EleType>* sample);
   DataBlock<EleType>* table() const { return table_; }
   // factory method to get a new instance
   // \param config should contain model needed configs
@@ -47,11 +48,14 @@ public:
   //    default use a local version
   static Model<EleType>* Get(Configure& config);
 
+  void AverageLastGradient();
+
 protected:
   // copmpute update delta
   virtual float GetGradient(Sample<EleType>* sample, DataBlock<EleType>* delta);
   // update table
   virtual void UpdateTable(DataBlock<EleType>* delta);
+  void SaveLastGradient(size_t idx);
 
 protected: 
   bool ftrl_;
@@ -66,6 +70,9 @@ protected:
   int minibatch_size_;
 
   DataBlock<EleType>* delta_;
+  DataBlock<EleType>* average_delta_;
+  DataBlock<EleType>* intermediate_delta_;
+  std::vector<DataBlock<EleType>*> last_delta_;
 
   Timer timer_;
   double computation_time_;

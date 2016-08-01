@@ -29,8 +29,11 @@ Model<EleType>::Model(Configure& config) :
     ftrl_ = false;
     table_ = DataBlock<EleType>::GetBlock(config.sparse, size);
     delta_ = DataBlock<EleType>::GetBlock(config.sparse, size);
+    average_delta_ = DataBlock<EleType>::GetBlock(config.sparse, size);
+    intermediate_delta_ = DataBlock<EleType>::GetBlock(config.sparse, size);
   }
 
+  average_delta_->Clear();
   table_->Clear();  // will set value to zero when dense
 
   if (config.init_model_file != "") {
@@ -55,52 +58,65 @@ Model<EleType>::~Model() {
 }
 
 template<typename EleType>
+void Model<EleType>::AverageLastGradient() {
+  EleType* raw = (EleType*)average_delta_->raw();
+  for (size_t i = 0; i < average_delta_->size(); ++i) {
+    raw[i] /= last_delta_.size();
+  }
+}
+
+template<typename EleType>
+void Model<EleType>::InitGradient(Sample<EleType>* sample) {
+  delta_->Clear();
+  GetGradient(sample, delta_);
+
+  auto delta = DataBlock<EleType>::GetBlock(delta_->sparse(), delta_->size());
+  last_delta_.push_back(delta);
+  SaveLastGradient(last_delta_.size() - 1);
+
+  EleType* raw = (EleType*)average_delta_->raw();
+  EleType* raw_delta = (EleType*)delta_->raw();
+  for (size_t i = 0; i < delta->size(); ++i) {
+    raw[i] += raw_delta[i];
+  }
+}
+
+template<typename EleType>
+void Model<EleType>::SaveLastGradient(size_t idx) {
+  memcpy(last_delta_[idx]->raw(), delta_->raw(), delta_->size() * sizeof(EleType));
+}
+
+template<typename EleType>
 inline float Model<EleType>::GetGradient(Sample<EleType>* sample, 
   DataBlock<EleType>* delta) {
   return objective_->Gradient(sample, table_, delta);
 }
 
 template<typename EleType>
-float Model<EleType>::Update(int count, Sample<EleType>** samples) {
+float Model<EleType>::Update(int count, Sample<EleType>** samples, size_t idx) {
   float train_loss = 0.0f;
   // process each batch
-  for (int i = 0; i < count; i += minibatch_size_) {
+  for (int i = 0; i < count; ++i) {
     ++compute_count_;
     timer_.Start();
     // compute delta
     delta_->Clear();
-    int upper = i + minibatch_size_;
-    upper = upper > count ? count : upper;
-    for (int j = i; j < upper; ++j) {
-      train_loss += GetGradient(samples[j], delta_);
+
+    train_loss += GetGradient(samples[i], delta_);
+
+    EleType* raw = (EleType*)average_delta_->raw();
+    EleType* raw_delta = (EleType*)delta_->raw();
+    memcpy(intermediate_delta_->raw(), last_delta_[idx + i]->raw(), sizeof(EleType)* intermediate_delta_->size());
+    SaveLastGradient(idx + i);
+
+    EleType* raw_last = (EleType*)intermediate_delta_->raw();
+    for (size_t k = 0; k < delta_->size(); ++k) {
+      raw_delta[k] -= raw_last[k] - raw[k];
     }
-    
-    // calculate and average delta
-    int batch_size = upper - i;
-    if (batch_size > 1) {
-      if (delta_->sparse()) {
-        if (ftrl_) {
-          SparseBlockIter<FTRLGradient<EleType>> iter
-            ((DataBlock<FTRLGradient<EleType>>*)delta_);
-          while (iter.Next()) {
-            iter.Value()->delta_z = (EleType)(iter.Value()->delta_z 
-              / static_cast<double>(batch_size));
-            iter.Value()->delta_n = (EleType)(iter.Value()->delta_n 
-              / static_cast<double>(batch_size));
-          }
-        } else {
-          SparseBlockIter<EleType> iter(delta_);
-          while (iter.Next()) {
-            (*iter.Value()) = (EleType)(*iter.Value() 
-              / static_cast<double>(batch_size)); 
-          }
-        }
-      } else {
-        EleType* raw = static_cast<EleType*>(delta_->raw());
-        for (size_t i = 0; i < delta_->size(); ++i) {
-          raw[i] = (EleType)(raw[i] / static_cast<double>(batch_size));
-        }
-      }
+    EleType* raw_new = (EleType*)last_delta_[idx + i]->raw();
+    // re-calculate average
+    for (size_t k = 0; k < delta_->size(); ++k) {
+      raw[k] += (raw_new[k] - raw_last[k]) / last_delta_.size();
     }
 
     computation_time_ += timer_.ElapseMilliSeconds();

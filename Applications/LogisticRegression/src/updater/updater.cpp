@@ -64,9 +64,9 @@ void SGDUpdater<EleType>::Process(DataBlock<EleType>* delta) {
     }
   }
   ++update_count_;
-  learning_rate_ = max(1e-3,
-    initial_learning_rate_ - (update_count_ / 
-    (learning_rate_coef_ * minibatch_size_)));
+  //learning_rate_ = max(1e-3,
+  //  initial_learning_rate_ - (update_count_ / 
+  //  (learning_rate_coef_ * minibatch_size_)));
   Log::Write(Debug, "SGD learning rate : %f\n", learning_rate_);
 }
 
