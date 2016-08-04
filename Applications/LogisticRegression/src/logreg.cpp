@@ -77,8 +77,6 @@ void LogReg<EleType>::BatchGradient(const std::string& train_file, size_t epoch,
 
 template<typename EleType>
 void LogReg<EleType>::Train(const std::string& train_file) {
-  Test();
-
   Log::Write(Info, "Train with file %s\n", train_file.c_str());
 
   int buffer_size = config_->read_buffer_size;
@@ -95,10 +93,10 @@ void LogReg<EleType>::Train(const std::string& train_file) {
 
   int count = 0;
   int train_epoch = config_->train_epoch;
-  size_t sample_seen = 0;
+  size_t sample_seen = 60000;
   float train_loss = 0.0f;
-  size_t last_seen = 0;
-  size_t last_m = 0;
+  size_t last_seen = 60000;
+  size_t last_m = 60000;
   size_t m = 0;
 
   BatchGradient(train_file, m++, batch_gradient);
@@ -117,15 +115,15 @@ void LogReg<EleType>::Train(const std::string& train_file) {
           BatchGradient(train_file, m++, batch_gradient);
           model_->SetBatchGradient(batch_gradient);
           model_->SaveTableToTableWK(*config_);
+          sample_seen += 60000;
           last_m = sample_seen;
         }
 
         train_loss += model_->Update(count, samples);
 
         sample_seen += count;
-        if (sample_seen - last_seen >= config_->show_time_per_sample) {
+        if (sample_seen % 60000 == 0) {
           Log::Write(Info, "Sample seen %lld, train loss %f\n", sample_seen, train_loss / (sample_seen - last_seen));
-          Test();
           train_loss = 0.0f;
           last_seen = sample_seen;
           model_->DisplayTime();
