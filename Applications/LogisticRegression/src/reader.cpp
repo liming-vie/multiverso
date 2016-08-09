@@ -31,7 +31,7 @@ SampleReader<EleType>::SampleReader(
     row_size_(row_size),
     output_size_(output_size),
     // use 2x size buffer
-    buffer_size_(max_row_buffer_count << 2),
+    buffer_size_(max_row_buffer_count * 3),
     sample_batch_size_(update_per_sample),
     sample_count_(0) {
   // parse files
@@ -75,6 +75,12 @@ SampleReader<EleType>::~SampleReader() {
 template <typename EleType>
 void SampleReader<EleType>::Reset() {
   DEBUG_CHECK(eof_);
+  delete cur_keys_;
+  while (!keys_.Empty()) {
+    keys_.Pop(cur_keys_);
+    delete cur_keys_;
+  }
+  cur_keys_ = new SparseBlock<bool>();
   reading_file_ = 0;
   delete reader_;
   reader_ = new TextReader(URI(files_[0]), 1024);
@@ -318,6 +324,14 @@ void BSparseSampleReader<EleType>::Reset() {
   this->eof_ = false;
   chunk_idx_ = 0;
   chunk_size_ = 0;
+
+  delete cur_keys_;
+  while (!keys_.Empty()) {
+    keys_.Pop(cur_keys_);
+    delete cur_keys_;
+  }
+  cur_keys_ = new SparseBlock<bool>();
+
   Log::Write(Debug, "BSparseSampleReader reset\n");
 }
 

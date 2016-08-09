@@ -114,10 +114,11 @@ template<typename EleType>
 void Model<EleType>::SaveTableToTableWK(Configure &config) {
   if (config.objective_type == "ftrl") {
   }
-  else if (config.sparse) {
-  }
-  else {
-    memcpy(table_wk_->raw(), table_->raw(), table_->size() * sizeof(EleType));
+  else{
+    if (config.sparse) {
+      table_wk_->Clear();
+    }
+    table_wk_->Set(table_);
   }
 }
 
@@ -144,12 +145,37 @@ float Model<EleType>::Update(int count, Sample<EleType>** samples) {
       GetGradient(samples[j], delta_wk_, table_wk_);
     }
     
-    // TODO: only support local desne LR
-    EleType* raw = reinterpret_cast<EleType*>(delta_->raw());
-    EleType* raw_wk = reinterpret_cast<EleType*>(delta_wk_->raw());
-    EleType* raw_batch = reinterpret_cast<EleType*>(batch_gradient_->raw());
-    for (size_t idx = 0; idx < delta_->size(); ++idx) {
-      raw[idx] -= raw_wk[idx] - raw_batch[idx];
+    // TODO: only support LR
+    if (delta_->sparse()) {
+      EleType* val;
+      {
+        SparseBlockIter<EleType> iter(delta_);
+        while (iter.Next()) {
+          if (val = batch_gradient_->Get(iter.Key())){
+            *iter.Value() += *val;
+          }
+          if (val = delta_wk_->Get(iter.Key())){
+            *iter.Value() -= *val;
+          }
+        }
+      }
+      SparseBlockIter<EleType> iter(delta_wk_);
+      while (iter.Next()) {
+        if (val = delta_->Get(iter.Key())){
+          *val -= *iter.Value();
+        }
+        else {
+          delta_->Set(iter.Key(), 0 - *iter.Value());
+        }
+      }
+    }
+    else {
+      EleType* raw = reinterpret_cast<EleType*>(delta_->raw());
+      EleType* raw_wk = reinterpret_cast<EleType*>(delta_wk_->raw());
+      EleType* raw_batch = reinterpret_cast<EleType*>(batch_gradient_->raw());
+      for (size_t idx = 0; idx < delta_->size(); ++idx) {
+        raw[idx] -= raw_wk[idx] - raw_batch[idx];
+      }
     }
     AverageGradient(delta_, upper - i);
 

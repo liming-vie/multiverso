@@ -53,6 +53,7 @@ void LogReg<EleType>::BatchGradient(const std::string& train_file, size_t epoch,
   Sample<EleType>** samples = new Sample<EleType>*[buffer_size];
 
   reader->Reset();
+  delta->Clear();
   // wait for reading
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -73,6 +74,8 @@ void LogReg<EleType>::BatchGradient(const std::string& train_file, size_t epoch,
   delete[]samples;
 
   model_->AverageGradient(delta, total_sample);
+
+  Log::Write(Info, "batch size %lld\n", delta->capacity());
 }
 
 template<typename EleType>

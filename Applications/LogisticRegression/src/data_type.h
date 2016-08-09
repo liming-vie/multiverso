@@ -179,9 +179,7 @@ public:
   inline void Set(DataBlock<EleType>* block) {
     DEBUG_CHECK(block->sparse() == false);
     DEBUG_CHECK(block->size() == size_);
-    for (size_t i = 0; i < size_; ++i) {
-      values_[i] = *block->Get(i);
-    }
+    memcpy(values_, block->raw(), sizeof(EleType)* size_);
   }
   inline void Clear() {
     memset(values_, 0, sizeof(EleType) * size_);
