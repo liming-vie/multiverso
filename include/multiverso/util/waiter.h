@@ -16,14 +16,19 @@ public:
   }
 
   void Notify() {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     --num_wait_;
     cv_.notify_all();
   }
 
   void Reset(int num_wait) {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     num_wait_ = num_wait;
+  }
+
+  void AddNumWait(int delta) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    num_wait_ += delta;
   }
 
 private:

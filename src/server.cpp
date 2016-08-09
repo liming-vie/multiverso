@@ -4,6 +4,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <mutex>
+#include <thread>
 
 #include "multiverso/actor.h"
 #include "multiverso/dashboard.h"
@@ -13,7 +15,8 @@
 #include "multiverso/util/configure.h"
 #include "multiverso/util/mt_queue.h"
 #include "multiverso/zoo.h"
-
+#include "multiverso/util/thread_pool.h"
+#include "multiverso/util/waiter.h"
 
 namespace multiverso {
 
@@ -221,13 +224,82 @@ private:
   MtQueue<MessagePtr> msg_get_cache_;
 };
 
+MV_DEFINE_int(num_server_threads, 8, "concurrency");
+class HogWildServer : public Server {
+public:
+  HogWildServer() : Server() {
+    pool_ = new ThreadPool<Handler, MessagePtr>(MV_CONFIG_num_server_threads);
+  }
+  ~HogWildServer() {
+    delete pool_;
+  }
+  void Start() {
+    pool_->Start();
+
+    Server::Start();
+  }
+ 
+  void Main() {
+    is_working_ = true;
+    MessagePtr msg;
+    while (mailbox_->Pop(msg)) {
+      pool_->RunTask(handlers_[msg->type()], msg);
+    }
+  }
+private:
+  ThreadPool<Handler, MessagePtr> *pool_;
+}; // concurent server
+
+
+class ConcurrentServer : public Server {
+public:
+  ConcurrentServer() : Server(), reading_(false) {
+    pool_ = new ThreadPool<Handler, MessagePtr>(MV_CONFIG_num_server_threads);
+    waiter_.Reset(0);
+  }
+  ~ConcurrentServer() {
+    delete pool_;
+  }
+
+  void Start() {
+    pool_->Start();
+
+    Server::Start();
+  }
+
+  void Main() {
+    is_working_ = true;
+    MessagePtr msg;
+    while (mailbox_->Pop(msg)) {
+      if (msg->type() == MsgType::Request_Get) {
+        reading_ = true;
+        waiter_.AddNumWait(1);
+        pool_->RunTask(handlers_[msg->type()], msg, &waiter_);
+      }
+      else {
+        if (reading_) {
+          waiter_.Wait();
+          reading_ = false;
+        }
+        handlers_[msg->type()](msg);
+      }
+    }
+  }
+private:
+  bool reading_;
+  Waiter waiter_;
+  ThreadPool<Handler, MessagePtr> *pool_;
+};
+
 Server* Server::GetServer() {
   if (!MV_CONFIG_sync) {
-    Log::Info("Create a async server\n");
-    return new Server();
+    Log::Info("Create a async concurrent server\n");
+    return new ConcurrentServer();
   }
   Log::Info("Create a sync server\n");
   return new SyncServer();
 }
+
+
 
 }  // namespace multiverso

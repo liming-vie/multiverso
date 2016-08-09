@@ -207,6 +207,7 @@
     <ClInclude Include="..\include\multiverso\util\mt_queue.h" />
     <ClInclude Include="..\include\multiverso\util\net_util.h" />
     <ClInclude Include="..\include\multiverso\util\quantization_util.h" />
+    <ClInclude Include="..\include\multiverso\util\thread_pool.h" />
     <ClInclude Include="..\include\multiverso\util\timer.h" />
     <ClInclude Include="..\include\multiverso\util\waiter.h" />
     <ClInclude Include="..\include\multiverso\worker.h" />

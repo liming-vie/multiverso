@@ -20,9 +20,9 @@ public:
   explicit Actor(const std::string& name);
   virtual ~Actor();
   // Start to run the Actor
-  void Start();
+  virtual void Start();
   // Stop to run the Actor
-  void Stop();
+  virtual void Stop();
   // Accept a message from other actors
   void Receive(MessagePtr&);
   // Actor name, a unique identifier of a actor
@@ -47,11 +47,11 @@ protected:
   std::unique_ptr<MtQueue<MessagePtr> > mailbox_;
   // message handlers function
   std::unordered_map<int, Handler> handlers_;
+
   bool is_working_;
+  std::unique_ptr<std::thread> thread_;
 private:
   std::string name_;
-
-  std::unique_ptr<std::thread> thread_;
 };
 
 namespace actor {
