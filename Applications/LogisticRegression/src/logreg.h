@@ -36,7 +36,7 @@ public:
   DataBlock<EleType>* model() const;
 
 private:
-  void BatchGradient(const std::string& train_file, size_t epoch,
+  size_t BatchGradient(const std::string& train_file, size_t epoch,
     DataBlock<EleType> *delta);
 
 private:

@@ -224,7 +224,7 @@ private:
   MtQueue<MessagePtr> msg_get_cache_;
 };
 
-MV_DEFINE_int(num_server_threads, 8, "concurrency");
+MV_DEFINE_int(num_server_threads, 16, "concurrency");
 class HogWildServer : public Server {
 public:
   HogWildServer() : Server() {

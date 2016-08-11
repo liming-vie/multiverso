@@ -109,17 +109,12 @@ void Model<EleType>::AverageGradient(DataBlock<EleType>* delta, size_t batch_siz
   }
 }
 
-// TODO only support local LR
 template<typename EleType>
 void Model<EleType>::SaveTableToTableWK(Configure &config) {
-  if (config.objective_type == "ftrl") {
+  if (config.sparse) {
+    table_wk_->Clear();
   }
-  else{
-    if (config.sparse) {
-      table_wk_->Clear();
-    }
-    table_wk_->Set(table_);
-  }
+  table_wk_->Set(table_);
 }
 
 
@@ -149,13 +144,13 @@ float Model<EleType>::Update(int count, Sample<EleType>** samples) {
     if (delta_->sparse()) {
       EleType* val;
       {
-        SparseBlockIter<EleType> iter(delta_);
+        SparseBlockIter<EleType> iter(batch_gradient_);
         while (iter.Next()) {
-          if (val = batch_gradient_->Get(iter.Key())){
-            *iter.Value() += *val;
+          if (val = delta_->Get(iter.Key())){
+            *val += *iter.Value();
           }
-          if (val = delta_wk_->Get(iter.Key())){
-            *iter.Value() -= *val;
+          else {
+            delta_->Set(iter.Key(), iter.Value());
           }
         }
       }

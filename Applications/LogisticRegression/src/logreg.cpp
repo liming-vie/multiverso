@@ -21,7 +21,7 @@ LogReg<EleType>::LogReg(const std::string &config_file) {
   config_->input_size += 1;
 
   if (config_->read_buffer_size % config_->minibatch_size != 0) {
-    config_->read_buffer_size += config_->read_buffer_size
+    config_->read_buffer_size += config_->minibatch_size
       - (config_->read_buffer_size % config_->minibatch_size);
   }
   // read buffer size should not be too small
@@ -39,7 +39,7 @@ LogReg<EleType>::~LogReg() {
 }
 
 template<typename EleType>
-void LogReg<EleType>::BatchGradient(const std::string& train_file, size_t epoch,
+size_t LogReg<EleType>::BatchGradient(const std::string& train_file, size_t epoch,
   DataBlock<EleType>* delta) {
   int buffer_size = config_->read_buffer_size;
 
@@ -76,6 +76,7 @@ void LogReg<EleType>::BatchGradient(const std::string& train_file, size_t epoch,
   model_->AverageGradient(delta, total_sample);
 
   Log::Write(Info, "batch size %lld\n", delta->capacity());
+  return total_sample;
 }
 
 template<typename EleType>
@@ -96,13 +97,14 @@ void LogReg<EleType>::Train(const std::string& train_file) {
 
   int count = 0;
   int train_epoch = config_->train_epoch;
-  size_t sample_seen = 60000;
   float train_loss = 0.0f;
-  size_t last_seen = 60000;
-  size_t last_m = 60000;
   size_t m = 0;
 
-  BatchGradient(train_file, m++, batch_gradient);
+  size_t train_size = BatchGradient(train_file, m++, batch_gradient);
+  size_t sample_seen = train_size;
+  size_t last_seen = sample_seen;
+  size_t last_m = sample_seen;
+
   model_->SetBatchGradient(batch_gradient);
   model_->SaveTableToTableWK(*config_);
 
@@ -118,14 +120,15 @@ void LogReg<EleType>::Train(const std::string& train_file) {
           BatchGradient(train_file, m++, batch_gradient);
           model_->SetBatchGradient(batch_gradient);
           model_->SaveTableToTableWK(*config_);
-          sample_seen += 60000;
+          
+          sample_seen += train_size;
           last_m = sample_seen;
         }
 
         train_loss += model_->Update(count, samples);
 
         sample_seen += count;
-        if (sample_seen % 60000 == 0) {
+        if (sample_seen % train_size == 0) {
           Log::Write(Info, "Sample seen %lld, train loss %f\n", sample_seen, train_loss / (sample_seen - last_seen));
           train_loss = 0.0f;
           last_seen = sample_seen;
